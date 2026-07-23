@@ -5,6 +5,9 @@ on:
     - cron: "0 5 * * *"
   workflow_dispatch: {}
 
+permissions:
+  issues: write
+
 jobs:
   scan:
     runs-on: ubuntu-latest
@@ -24,8 +27,12 @@ jobs:
           playwright install --with-deps chromium
 
       - name: Run scanner
-        env:
-          GMAIL_USER: ${{ secrets.GMAIL_USER }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
         run: python scanner.py
+
+      - name: Create GitHub Issue with report
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "$(cat report_title.txt)" \
+            --body-file report_body.txt
