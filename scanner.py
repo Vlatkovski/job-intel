@@ -4,8 +4,8 @@ Job Intelligence Scanner for VFF Utility Engineering
 Секое утро (преку GitHub Actions) го прегледува career страниците на
 компаниите од companies.csv, бара клучни зборови релевантни за
 Make Ready / Pole Loading работа, ги отфрла огласите каде експлицитно
-пишува дека мора да се биде во САД / со work authorization, и праќа
-email со останатите (потенцијално remote/B2B) огласи.
+пишува дека мора да се биде во САД / со work authorization, и создава
+GitHub Issue со останатите (потенцијално remote/B2B) огласи.
 
 Не гарантира 100% точност — ова е помошна алатка за филтрирање, не замена
 за читање на самиот оглас пред аплицирање.
@@ -14,12 +14,9 @@ email со останатите (потенцијално remote/B2B) оглас
 import csv
 import os
 import re
-import smtplib
 import sys
 import time
 from dataclasses import dataclass, field
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 from playwright.sync_api import sync_playwright
 
@@ -149,8 +146,8 @@ def load_companies(csv_path: str):
 
 
 def build_report(results):
-    relevant = []   # има keyword hits, БЕЗ exclusion
-    excluded = []    # има keyword hits, НО со US-only/work-auth фраза
+    relevant = []
+    excluded = []
     no_matches = []
     errors = []
 
@@ -214,26 +211,11 @@ def build_report(results):
     return "\n".join(lines), len(relevant)
 
 
-def send_email(subject: str, body: str):
-    gmail_user = os.environ.get("GMAIL_USER")
-    gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
-    recipient = os.environ.get("RECIPIENT_EMAIL", gmail_user)
-
-    if not gmail_user or not gmail_pass:
-        print("GMAIL_USER / GMAIL_APP_PASSWORD не се поставени — прескокнувам email, само печатам извештај.")
-        print(body)
-        return
-
-    msg = MIMEMultipart()
-    msg["From"] = gmail_user
-    msg["To"] = recipient
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain", "utf-8"))
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(gmail_user, gmail_pass)
-        server.sendmail(gmail_user, recipient, msg.as_string())
-    print(f"Email испратен до {recipient}")
+def write_report_file(subject: str, body: str):
+    with open("report_title.txt", "w", encoding="utf-8") as f:
+        f.write(subject)
+    with open("report_body.txt", "w", encoding="utf-8") as f:
+        f.write(body)
 
 
 def main():
@@ -248,14 +230,13 @@ def main():
             print(f"[{i}/{len(companies)}] Проверувам: {name} ({url})")
             result = scan_company(browser, name, url)
             results.append(result)
-            time.sleep(0.5)  # мала пауза, да не се преоптоварат серверите
+            time.sleep(0.5)
         browser.close()
 
     report_body, relevant_count = build_report(results)
     subject = f"Job Intelligence — {relevant_count} релевантни огласи денес"
-    send_email(subject, report_body)
+    write_report_file(subject, report_body)
 
-    # исто и во GitHub Actions log, за увид без email
     print("\n\n" + report_body)
 
 
