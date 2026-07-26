@@ -1,14 +1,18 @@
 """
-Job Intelligence Scanner for VFF Utility Engineering
------------------------------------------------------
+Job Intelligence / Lead Scanner for VFF Utility Engineering
+-------------------------------------------------------------
 Секое утро (преку GitHub Actions) го прегледува career страниците на
-компаниите од companies.csv, бара клучни зборови релевантни за
-Make Ready / Pole Loading работа, ги отфрла огласите каде експлицитно
-пишува дека мора да се биде во САД / со work authorization, и создава
-GitHub Issue со останатите (потенцијално remote/B2B) огласи.
+компаниите од companies.csv и бара клучни зборови релевантни за
+Make Ready / Pole Loading работа (Pole Loading, Make Ready, O-Calc,
+Joint Use, NESC, итн.).
 
-Не гарантира 100% точност — ова е помошна алатка за филтрирање, не замена
-за читање на самиот оглас пред аплицирање.
+ВАЖНО — намена: ова НЕ е алатка за аплицирање на огласи. Целта е да
+идентификува компании кои МОМЕНТАЛНО активно вработуваат за MRE/OSP
+позиции — тоа е сигнал дека имаат волумен работа и се добра мета за
+директен B2B subcontracting контакт (не пријава преку career страница).
+Дали конкретната огласена позиција бара US престој е небитно за таа цел.
+
+Не гарантира 100% точност — ова е помошна алатка за откривање leads.
 """
 
 import csv
@@ -40,39 +44,22 @@ KEYWORDS = [
     "outside plant",
 ]
 
-# Фрази што, ако се појават на страницата, значат дека огласот
-# веројатно бара физичко присуство во САД / US work authorization.
-EXCLUSION_PHRASES = [
-    "us only",
-    "u.s. only",
-    "us-based only",
-    "must reside in the us",
-    "must reside in the united states",
-    "must be located in the us",
-    "must be located in the united states",
-    "must be a us citizen",
-    "must be a u.s. citizen",
-    "us citizenship required",
-    "work authorization required",
-    "authorization to work in the united states",
-    "authorized to work in the united states",
-    "no sponsorship",
-    "not provide sponsorship",
-    "will not sponsor",
-    "unable to sponsor",
-    "no visa sponsorship",
-    "green card holder",
-    "must be legally authorized to work in the us",
-    "candidates must reside",
-    "local candidates only",
-    "onsite only",
-    "on-site only",
-    "relocation required",
+# Фрази кои сигнализираат дека компанијата ЕКСПЛИЦИТНО не сака надворешни
+# subcontractor/vendor фирми (различно од "employee мора да живее во US" —
+# тоа веќе не е релевантно за нашата цел). Ретко се среќава, но ако се
+# појави, вреди да се одвои во посебна секција за информација.
+NO_SUBCONTRACTOR_PHRASES = [
+    "no subcontractors",
+    "not accepting new vendors",
+    "no third-party vendors",
+    "no staffing agencies",
+    "no recruiters",
+    "no agencies please",
 ]
 
-CONTEXT_CHARS = 160  # колку карактери контекст да се земат околу секое совпаѓање
+CONTEXT_CHARS = 160
 PAGE_TIMEOUT_MS = 25000
-NAV_WAIT_MS = 3000  # дополнително чекање по вчитување, за JS-рендерирани страници
+NAV_WAIT_MS = 3000
 
 
 @dataclass
@@ -80,7 +67,7 @@ class CompanyResult:
     name: str
     url: str
     status: str = "ok"  # ok | error | no_matches
-    hits: list = field(default_factory=list)  # (keyword, context, excluded_by)
+    hits: list = field(default_factory=list)  # (keyword, context, blocked_by)
     error_msg: str = ""
 
 
@@ -97,13 +84,13 @@ def find_hits(raw_text: str):
             end = min(len(text), m.end() + CONTEXT_CHARS // 2)
             context = text[start:end].strip()
 
-            excluded_by = None
-            for phrase in EXCLUSION_PHRASES:
+            blocked_by = None
+            for phrase in NO_SUBCONTRACTOR_PHRASES:
                 if phrase in context:
-                    excluded_by = phrase
+                    blocked_by = phrase
                     break
 
-            hits.append((kw, context, excluded_by))
+            hits.append((kw, context, blocked_by))
     return hits
 
 
@@ -124,7 +111,7 @@ def scan_company(browser, name: str, url: str) -> CompanyResult:
             result.status = "ok"
         else:
             result.status = "no_matches"
-    except Exception as e:  # намерно широко — не сакаме еден пад да го собори целиот скен
+    except Exception as e:
         result.status = "error"
         result.error_msg = str(e)[:200]
     finally:
@@ -146,8 +133,8 @@ def load_companies(csv_path: str):
 
 
 def build_report(results):
-    relevant = []
-    excluded = []
+    leads = []       # компании со отворени MRE позиции — потенцијални B2B цели
+    blocked = []      # експлицитно не сакаат subcontractors/vendors
     no_matches = []
     errors = []
 
@@ -163,25 +150,25 @@ def build_report(results):
         blocked_hits = [h for h in r.hits if h[2] is not None]
 
         if clean_hits:
-            relevant.append((r, clean_hits))
-        if blocked_hits and not clean_hits:
-            excluded.append((r, blocked_hits))
+            leads.append((r, clean_hits))
+        elif blocked_hits:
+            blocked.append((r, blocked_hits))
 
     lines = []
-    lines.append(f"JOB INTELLIGENCE — дневен извештај")
+    lines.append("JOB INTELLIGENCE — дневни B2B leads")
     lines.append(f"Проверени компании: {len(results)}")
-    lines.append(f"Потенцијално релевантни (без US-only ограничувања): {len(relevant)}")
-    lines.append(f"Најдени клучни зборови, но изгледа US-only: {len(excluded)}")
-    lines.append(f"Без совпаѓања: {len(no_matches)}")
+    lines.append(f"Активно вработуваат MRE/OSP позиции (потенцијални leads): {len(leads)}")
+    lines.append(f"Експлицитно не сакаат subcontractors/vendors: {len(blocked)}")
+    lines.append(f"Без совпаѓања денес: {len(no_matches)}")
     lines.append(f"Грешки при отворање: {len(errors)}")
     lines.append("")
     lines.append("=" * 70)
-    lines.append("ПОТЕНЦИЈАЛНО РЕЛЕВАНТНИ")
+    lines.append("LEADS — активно вработуваат, контактирај директно за subcontracting")
     lines.append("=" * 70)
 
-    if not relevant:
-        lines.append("(нема нови совпаѓања денес)")
-    for r, hits in relevant:
+    if not leads:
+        lines.append("(нема нови leads денес)")
+    for r, hits in leads:
         lines.append("")
         lines.append(f"• {r.name}")
         lines.append(f"  {r.url}")
@@ -192,12 +179,12 @@ def build_report(results):
             seen_kw.add(kw)
             lines.append(f"  - [{kw}] ...{context}...")
 
-    if excluded:
+    if blocked:
         lines.append("")
         lines.append("=" * 70)
-        lines.append("ОТФРЛЕНИ (US-only / work authorization) — за информација")
+        lines.append("НЕ СЕ ОТВОРЕНИ ЗА VENDORS — за информација, прескокни")
         lines.append("=" * 70)
-        for r, hits in excluded:
+        for r, hits in blocked:
             lines.append(f"• {r.name} — {r.url}  (причина: '{hits[0][2]}')")
 
     if errors:
@@ -208,7 +195,7 @@ def build_report(results):
         for r in errors:
             lines.append(f"• {r.name} — {r.url}  ({r.error_msg})")
 
-    return "\n".join(lines), len(relevant)
+    return "\n".join(lines), len(leads)
 
 
 def write_report_file(subject: str, body: str):
@@ -233,8 +220,8 @@ def main():
             time.sleep(0.5)
         browser.close()
 
-    report_body, relevant_count = build_report(results)
-    subject = f"Job Intelligence — {relevant_count} релевантни огласи денес"
+    report_body, lead_count = build_report(results)
+    subject = f"Job Intelligence — {lead_count} нови B2B leads денес"
     write_report_file(subject, report_body)
 
     print("\n\n" + report_body)
