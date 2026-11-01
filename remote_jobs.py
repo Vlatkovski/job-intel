@@ -301,6 +301,9 @@ def classify(j):
             return drop("asks for 2+ years of experience")
         return ("ai", "ok")
     if hits(CORE_RE, head) or len(hits(CORE_RE, desc)) >= 2:
+        if any(w in title for w in (" sales ", "business development", "marketing", "recruiter",
+                                    "account executive", "account manager")):
+            return drop("senior / dev / sales title")
         return ("core", "ok" if loc == "ok" else "maybe")
     if hits(SIDE_RE, head) and loc in ("ok", "eu"):
         if any(w in title for w in LANG_WORDS) or LANG_REQ_RE.search(desc):
