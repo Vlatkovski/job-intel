@@ -242,7 +242,14 @@ def classify(j):
     if loc == "no":
         return drop("location not open to him")
     if any(b in head for b in BAD_TERMS):
-        return ("ai", "ok") if loc in ("ok", "eu") else None
+        if loc not in ("ok", "eu"):
+            return None
+        if any(w in title for w in LANG_WORDS) or LANG_REQ_RE.search(desc):
+            return drop("needs a language he lacks")
+        years = [int(n) for n in re.findall(r"(\d{1,2})\s*\+?\s*(?:years|yrs)", desc)]
+        if years and max(years) >= 2:
+            return drop("asks for 2+ years of experience")
+        return ("ai", "ok")
     if hits(CORE_RE, head) or len(hits(CORE_RE, desc)) >= 2:
         return ("core", "ok" if loc == "ok" else "maybe")
     if hits(SIDE_RE, head) and loc in ("ok", "eu"):
