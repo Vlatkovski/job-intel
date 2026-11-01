@@ -41,7 +41,13 @@ LANG_WORDS = [
     "hindi", "norwegian", "swedish", "danish", "finnish", "hungarian", "romanian",
     "bulgarian", "greek", "hebrew", "chinese", "mandarin", "icelandic", "slovak",
     "bilingual", "multilingual", "trilingual", "m/w/d", "(w/m/d)",
+    "georgian", "armenian", "azerbaijani", "kazakh", "uzbek", "thai", "vietnamese",
+    "indonesian", "malay", "tagalog", "filipino", "bengali", "urdu", "persian", "farsi",
+    "albanian", "lithuanian", "latvian", "estonian", "slovenian", "tamil", "telugu",
+    "swahili", "amharic", "kurdish", "pashto", "mongolian", "nepali", "punjabi",
+    "marathi", "gujarati", "afrikaans", "belarusian", "maltese", "irish", "welsh",
 ]
+OK_LANGS = {"english", "serbian", "macedonian", "croatian", "bosnian", "montenegrin"}
 LANG_REQ_RE = re.compile(
     r"(native|fluent|fluency|proficien\w*|advanced|c1|c2)\s+(level\s+)?(in\s+|of\s+)?(" +
     "|".join(w for w in LANG_WORDS if w.isalpha()) + r")\b", re.I)
@@ -245,6 +251,11 @@ def classify(j):
         if loc not in ("ok", "eu"):
             return None
         if any(w in title for w in LANG_WORDS) or LANG_REQ_RE.search(desc):
+            return drop("needs a language he lacks")
+        m = re.search(r"(?:network|trainers?|contributor|annotator)\s*[-–:]\s*([a-z]+)", title.strip())
+        if m and m.group(1) not in OK_LANGS and m.group(1) not in ("remote", "video", "audio",
+                                                                  "text", "image", "data",
+                                                                  "freelance", "contract"):
             return drop("needs a language he lacks")
         years = [int(n) for n in re.findall(r"(\d{1,2})\s*\+?\s*(?:years|yrs)", desc)]
         if years and max(years) >= 2:
