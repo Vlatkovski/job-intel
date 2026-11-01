@@ -242,6 +242,9 @@ def classify(j):
             return drop("needs a language he lacks")
         if any(w in title for w in SIDE_EXCLUDE):
             return drop("senior / dev / sales title")
+        years = [int(n) for n in re.findall(r"(\d{1,2})\s*\+?\s*(?:years|yrs)", desc)]
+        if years and max(years) >= 2:
+            return drop("asks for 2+ years of experience")
         return ("side", "ok")
     return None
 
