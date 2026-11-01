@@ -23,6 +23,8 @@ CORE_TERMS = [
     "fttx", "fttp", "telecom design", "telecom engineer", "utility design",
     "network design", "fiber engineer", "cad drafter", "autocad", "drafter",
     "drafting", "engineering technician", "gis", "permit", "permitting",
+    "qgis", "arcgis", "gis analyst", "gis technician", "gis specialist", "geospatial",
+    "cartographer", "cartography", "spatial analyst", "remote sensing", "mapping specialist",
 ]
 SIDE_TERMS = [
     "data entry", "virtual assistant", "administrative assistant", "admin assistant",
@@ -213,7 +215,7 @@ def fetch_wwr():
 
 TARGET_TERMS = ["make ready", "pole loading", "pole attachment", "o-calc", "katapult",
                 "fiber design", "outside plant", "telecom design", "utility design",
-                "joint use"]
+                "joint use", "qgis", "gis technician", "gis analyst", "geospatial"]
 
 
 def fetch_targeted():
@@ -302,7 +304,9 @@ def classify(j):
         return ("ai", "ok")
     if hits(CORE_RE, head) or len(hits(CORE_RE, desc)) >= 2:
         if any(w in title for w in (" sales ", "business development", "marketing", "recruiter",
-                                    "account executive", "account manager")):
+                                    "account executive", "account manager", "developer", "software",
+                                    "programmer", "devops", "full stack", "full-stack", "backend",
+                                    "back-end", "frontend", "front-end", "data scientist")):
             return drop("senior / dev / sales title")
         return ("core", "ok" if loc == "ok" else "maybe")
     if hits(SIDE_RE, head) and loc in ("ok", "eu"):
