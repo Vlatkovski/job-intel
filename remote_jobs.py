@@ -294,8 +294,6 @@ def main():
     total = sum(len(v) for v in buckets.values())
     print("matches:", total)
     print("filtered out:", STATS)
-    if total == 0:
-        return 0
 
     def line(j):
         d = j["published"].strftime("%Y-%m-%d") if j["published"] else "?"
