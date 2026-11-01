@@ -211,8 +211,47 @@ def fetch_wwr():
     return out
 
 
+TARGET_TERMS = ["make ready", "pole loading", "pole attachment", "o-calc", "katapult",
+                "fiber design", "outside plant", "telecom design", "utility design",
+                "joint use"]
+
+
+def fetch_targeted():
+    """Keyword searches for MRE and utility/telecom design work on boards that support search."""
+    import time
+    out, calls, fails = [], 0, 0
+    for term in TARGET_TERMS:
+        for url, kind in (
+            ("https://jobicy.com/api/v2/remote-jobs?count=50&tag=" + term.replace(" ", "+"), "jobicy"),
+            ("https://himalayas.app/jobs/api/search?q=" + term.replace(" ", "+"), "himalayas"),
+        ):
+            calls += 1
+            try:
+                r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+                r.raise_for_status()
+                data = r.json().get("jobs", [])
+                for j in data:
+                    if kind == "jobicy":
+                        out.append(job(j.get("jobTitle"), j.get("companyName"), j.get("jobGeo"),
+                                       j.get("url"), j.get("pubDate"),
+                                       j.get("jobDescription") or j.get("jobExcerpt"),
+                                       j.get("jobIndustry"), "Jobicy search"))
+                    else:
+                        restr = j.get("locationRestrictions") or []
+                        out.append(job(j.get("title"), j.get("companyName"),
+                                       ", ".join(restr) if restr else "Worldwide",
+                                       j.get("applicationLink") or j.get("guid"), j.get("pubDate"),
+                                       j.get("description") or j.get("excerpt"),
+                                       j.get("categories"), "Himalayas search"))
+            except Exception:
+                fails += 1
+            time.sleep(2)
+    print(f"targeted searches: {calls} calls, {fails} failed, {len(out)} results")
+    return out
+
+
 FETCHERS = [fetch_remotive, fetch_remotive_support, fetch_remoteok, fetch_jobicy,
-            fetch_himalayas, fetch_wwr]
+            fetch_himalayas, fetch_wwr, fetch_targeted]
 
 
 # ---- filtering --------------------------------------------------------------
