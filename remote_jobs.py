@@ -12,7 +12,8 @@ from email.utils import parsedate_to_datetime
 import requests
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; job-intel-remote/1.0)"}
-MAX_AGE_HOURS = 40  # daily run, small overlap so nothing is missed
+import os
+MAX_AGE_HOURS = int(os.environ.get("MAX_AGE_HOURS", "40"))  # daily run, small overlap
 TIMEOUT = 30
 
 # ---- what we look for ------------------------------------------------------
@@ -24,9 +25,38 @@ CORE_TERMS = [
     "drafting", "engineering technician", "gis", "permit", "permitting",
 ]
 SIDE_TERMS = [
-    "data entry", "virtual assistant", "administrative assistant",
-    "it support", "help desk", "helpdesk",
+    "data entry", "virtual assistant", "administrative assistant", "admin assistant",
+    "it support", "help desk", "helpdesk", "customer support", "customer service",
+    "customer care", "customer success", "support agent", "support specialist",
+    "support representative", "support associate", "chat support", "email support",
+    "live chat", "livechat", "content moderator", "moderator", "transcription",
+    "transcriber", "proofreader", "proofreading", "back office", "order processing",
+    "data quality", "document control", "office assistant",
+    "executive assistant", "personal assistant", "coordinator",
 ]
+# language requirements he cannot meet (he speaks English, Serbian, Macedonian)
+LANG_WORDS = [
+    "german", "spanish", "french", "italian", "dutch", "polish", "portuguese",
+    "turkish", "czech", "arabic", "japanese", "korean", "russian", "ukrainian",
+    "hindi", "norwegian", "swedish", "danish", "finnish", "hungarian", "romanian",
+    "bulgarian", "greek", "hebrew", "chinese", "mandarin", "icelandic", "slovak",
+    "bilingual", "multilingual", "trilingual", "m/w/d", "(w/m/d)",
+]
+LANG_REQ_RE = re.compile(
+    r"(native|fluent|fluency|proficien\w*|advanced|c1|c2)\s+(level\s+)?(in\s+|of\s+)?(" +
+    "|".join(w for w in LANG_WORDS if w.isalpha()) + r")\b", re.I)
+# not easy / not what he wants for the easy-work bucket
+SIDE_EXCLUDE = [
+    "senior", "director", "head of", "vice president", " vp ", "lead ", "principal",
+    "manager", "developer", "software", "devops", "programmer", "engineer",
+    "sales", "business development", "account executive", "recruiter", "marketing",
+]
+SCAM_TERMS = [
+    "registration fee", "pay a fee", "training fee", "telegram", "whatsapp",
+    "bank details", "purchase equipment", "wire transfer", "crypto wallet",
+    "no experience needed earn", "earn up to $", "daily payout",
+]
+STATS = {}
 # titles/tags containing these are dropped (AI-training gigs etc.)
 BAD_TERMS = [
     "annotation", "annotator", "ai trainer", "ai training", "data labeling",
@@ -35,7 +65,7 @@ BAD_TERMS = [
 # location text that counts as open to us
 OK_LOC = ["worldwide", "anywhere", "global", "international", "all countries", "world wide"]
 # location text that is unclear, shown separately for manual check
-MAYBE_LOC = ["europe", "emea", "balkan", "serbia", "macedonia", "eu ", "cet"]
+MAYBE_LOC = ["europe", "emea", "balkan", "serbia", "macedonia", "eu ", "cet", "european"]
 # description text that kills a listing (US-only requirements)
 US_ONLY_PATTERNS = [
     r"must (be|reside|live)[^.]{0,40}(united states|u\.s\.|\bus\b|usa)",
@@ -102,6 +132,15 @@ def fetch_remotive():
                 j.get("tags"), "Remotive") for j in r.json().get("jobs", [])]
 
 
+def fetch_remotive_support():
+    r = requests.get("https://remotive.com/api/remote-jobs?category=customer-support",
+                     headers=HEADERS, timeout=TIMEOUT)
+    r.raise_for_status()
+    return [job(j.get("title"), j.get("company_name"), j.get("candidate_required_location"),
+                j.get("url"), j.get("publication_date"), j.get("description"),
+                j.get("tags"), "Remotive") for j in r.json().get("jobs", [])]
+
+
 def fetch_remoteok():
     r = requests.get("https://remoteok.com/api", headers=HEADERS, timeout=TIMEOUT)
     r.raise_for_status()
@@ -158,7 +197,8 @@ def fetch_wwr():
     return out
 
 
-FETCHERS = [fetch_remotive, fetch_remoteok, fetch_jobicy, fetch_himalayas, fetch_wwr]
+FETCHERS = [fetch_remotive, fetch_remotive_support, fetch_remoteok, fetch_jobicy,
+            fetch_himalayas, fetch_wwr]
 
 
 # ---- filtering --------------------------------------------------------------
@@ -169,7 +209,7 @@ def loc_class(location):
     if l == "":
         return "maybe"
     if any(x in l for x in MAYBE_LOC):
-        return "maybe"
+        return "eu"
     return "no"
 
 
@@ -179,18 +219,30 @@ def hits(regexes, text):
 
 def classify(j):
     head = f"{j['title']} {' '.join(j['tags'])}".lower()
+    title = f" {j['title'].lower()} "
     desc = strip_html(j["desc"]).lower()
+
+    def drop(reason):
+        STATS[reason] = STATS.get(reason, 0) + 1
+        return None
+
     if any(b in head for b in BAD_TERMS):
-        return None
+        return drop("AI-training / annotation")
+    if any(s in desc for s in SCAM_TERMS):
+        return drop("scam signals")
     if any(r.search(desc) for r in US_RE):
-        return None
+        return drop("US-only text")
     loc = loc_class(j["location"])
     if loc == "no":
-        return None
+        return drop("location not open to him")
     if hits(CORE_RE, head) or len(hits(CORE_RE, desc)) >= 2:
-        return ("core", loc)
-    if hits(SIDE_RE, head) and loc == "ok":
-        return ("side", loc)
+        return ("core", "ok" if loc == "ok" else "maybe")
+    if hits(SIDE_RE, head) and loc in ("ok", "eu"):
+        if any(w in title for w in LANG_WORDS) or LANG_REQ_RE.search(desc):
+            return drop("needs a language he lacks")
+        if any(w in title for w in SIDE_EXCLUDE):
+            return drop("senior / dev / sales title")
+        return ("side", "ok")
     return None
 
 
@@ -220,6 +272,7 @@ def main():
 
     total = sum(len(v) for v in buckets.values())
     print("matches:", total)
+    print("filtered out:", STATS)
     if total == 0:
         return 0
 
@@ -241,7 +294,8 @@ def main():
     parts.append("Sources: [Remotive](https://remotive.com), [Remote OK](https://remoteok.com), "
                  "[Jobicy](https://jobicy.com), [Himalayas](https://himalayas.app), "
                  "[We Work Remotely](https://weworkremotely.com)\n\n"
-                 "Scan status: " + ", ".join(status))
+                 "Scan status: " + ", ".join(status) +
+                 "\n\nFiltered out: " + (", ".join(f"{k}: {v}" for k, v in STATS.items()) or "nothing"))
 
     with open("remote_title.txt", "w", encoding="utf-8") as f:
         f.write(f"Remote jobs {now.strftime('%Y-%m-%d')}: {total} new")

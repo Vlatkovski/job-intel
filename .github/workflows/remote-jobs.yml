@@ -25,6 +25,8 @@ jobs:
         run: pip install requests
 
       - name: Run remote jobs scan
+        env:
+          MAX_AGE_HOURS: ${{ github.event_name == 'workflow_dispatch' && '240' || '40' }}
         run: python remote_jobs.py
 
       - name: Create GitHub Issue with report
