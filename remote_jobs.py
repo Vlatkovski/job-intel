@@ -56,6 +56,14 @@ SCAM_TERMS = [
     "bank details", "purchase equipment", "wire transfer", "crypto wallet",
     "no experience needed earn", "earn up to $", "daily payout",
 ]
+# he wants chat and email only, no live voice or video work
+CALL_TERMS = [
+    "phone support", "phone calls", "phone-based", "phone based", "by phone",
+    "on the phone", "over the phone", "telephone", "inbound call", "outbound call",
+    "cold call", "call center", "call centre", "contact center", "voice support",
+    "handle calls", "answer calls", "take calls", "live calls", "video call",
+    "video support", "screen shar", "screenshar", "zoom call", "voice channel",
+]
 STATS = {}
 # titles/tags containing these are dropped (AI-training gigs etc.)
 BAD_TERMS = [
@@ -242,6 +250,8 @@ def classify(j):
             return drop("needs a language he lacks")
         if any(w in title for w in SIDE_EXCLUDE):
             return drop("senior / dev / sales title")
+        if any(c in title or c in desc for c in CALL_TERMS):
+            return drop("needs calls / video / screen sharing")
         years = [int(n) for n in re.findall(r"(\d{1,2})\s*\+?\s*(?:years|yrs)", desc)]
         if years and max(years) >= 2:
             return drop("asks for 2+ years of experience")
