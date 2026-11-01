@@ -234,8 +234,6 @@ def classify(j):
         STATS[reason] = STATS.get(reason, 0) + 1
         return None
 
-    if any(b in head for b in BAD_TERMS):
-        return drop("AI-training / annotation")
     if any(s in desc for s in SCAM_TERMS):
         return drop("scam signals")
     if any(r.search(desc) for r in US_RE):
@@ -243,6 +241,8 @@ def classify(j):
     loc = loc_class(j["location"])
     if loc == "no":
         return drop("location not open to him")
+    if any(b in head for b in BAD_TERMS):
+        return ("ai", "ok") if loc in ("ok", "eu") else None
     if hits(CORE_RE, head) or len(hits(CORE_RE, desc)) >= 2:
         return ("core", "ok" if loc == "ok" else "maybe")
     if hits(SIDE_RE, head) and loc in ("ok", "eu"):
@@ -272,7 +272,8 @@ def main():
             status.append(f"{f.__name__[6:]}: ERROR {type(e).__name__}")
     print("sources ->", ", ".join(status))
 
-    seen, buckets = set(), {("core", "ok"): [], ("core", "maybe"): [], ("side", "ok"): []}
+    seen, buckets = set(), {("core", "ok"): [], ("core", "maybe"): [], ("side", "ok"): [],
+                            ("ai", "ok"): []}
     for j in all_jobs:
         if not j["url"] or j["url"] in seen:
             continue
@@ -298,9 +299,10 @@ def main():
     titles = {
         ("core", "ok"): "Engineering/design, open worldwide",
         ("core", "maybe"): "Engineering/design, location unclear (check manually)",
-        ("side", "ok"): "Easy remote work (admin, data entry, IT support), open worldwide",
+        ("side", "ok"): "Easy remote work (chat, email, admin, data entry), open to him",
+        ("ai", "ok"): "AI training / annotation gigs, open to him (check pay and platform first)",
     }
-    for key in [("core", "ok"), ("core", "maybe"), ("side", "ok")]:
+    for key in [("core", "ok"), ("core", "maybe"), ("side", "ok"), ("ai", "ok")]:
         items = buckets[key][:25]
         if items:
             parts.append(f"## {titles[key]} ({len(buckets[key])})\n\n" + "\n".join(line(j) for j in items))
