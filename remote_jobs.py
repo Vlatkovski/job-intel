@@ -221,7 +221,6 @@ def fetch_targeted():
     for term in TARGET_TERMS:
         for url, kind in (
             ("https://jobicy.com/api/v2/remote-jobs?count=50&tag=" + term.replace(" ", "+"), "jobicy"),
-            ("https://himalayas.app/jobs/api/search?q=" + term.replace(" ", "+"), "himalayas"),
         ):
             calls += 1
             try:
@@ -249,7 +248,7 @@ def fetch_targeted():
 
 
 FETCHERS = [fetch_remotive, fetch_remotive_support, fetch_remoteok, fetch_jobicy,
-            fetch_himalayas, fetch_wwr, fetch_targeted]
+            fetch_wwr, fetch_targeted]
 
 
 # ---- filtering --------------------------------------------------------------
@@ -369,7 +368,7 @@ def main():
         if items:
             parts.append(f"## {titles[key]} ({len(buckets[key])})\n\n" + "\n".join(line(j) for j in items))
     parts.append("Sources: [Remotive](https://remotive.com), [Remote OK](https://remoteok.com), "
-                 "[Jobicy](https://jobicy.com), [Himalayas](https://himalayas.app), "
+                 "[Jobicy](https://jobicy.com), "
                  "[We Work Remotely](https://weworkremotely.com)\n\n"
                  "Scan status: " + ", ".join(status) +
                  "\n\nFiltered out: " + (", ".join(f"{k}: {v}" for k, v in STATS.items()) or "nothing"))
