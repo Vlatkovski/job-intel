@@ -221,6 +221,7 @@ def fetch_targeted():
     for term in TARGET_TERMS:
         for url, kind in (
             ("https://jobicy.com/api/v2/remote-jobs?count=50&tag=" + term.replace(" ", "+"), "jobicy"),
+            ("https://himalayas.app/jobs/api/search?q=" + term.replace(" ", "+"), "himalayas"),
         ):
             calls += 1
             try:
