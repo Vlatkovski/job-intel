@@ -19,12 +19,8 @@ TIMEOUT = 30
 # ---- what we look for ------------------------------------------------------
 CORE_TERMS = [
     "make ready", "make-ready", "pole loading", "o-calc", "ocalc", "katapult",
-    "osp", "outside plant", "joint use", "pole attachment", "fiber design",
-    "fttx", "fttp", "telecom design", "telecom engineer", "utility design",
-    "network design", "fiber engineer", "cad drafter", "autocad", "drafter",
-    "drafting", "engineering technician", "gis", "permit", "permitting",
-    "qgis", "arcgis", "gis analyst", "gis technician", "gis specialist", "geospatial",
-    "cartographer", "cartography", "spatial analyst", "remote sensing", "mapping specialist",
+    "osp design", "outside plant", "joint use", "pole attachment", "osp designer",
+    "qgis", "arcgis", "gis analyst", "gis technician", "gis specialist",
 ]
 SIDE_TERMS = [
     "data entry", "virtual assistant", "administrative assistant", "admin assistant",
@@ -214,8 +210,8 @@ def fetch_wwr():
 
 
 TARGET_TERMS = ["make ready", "pole loading", "pole attachment", "o-calc", "katapult",
-                "fiber design", "outside plant", "telecom design", "utility design",
-                "joint use", "qgis", "gis technician", "gis analyst", "geospatial"]
+                "joint use", "outside plant", "osp design", "qgis", "gis technician",
+                "gis analyst"]
 
 
 def fetch_targeted():
@@ -302,7 +298,7 @@ def classify(j):
         if years and max(years) >= 2:
             return drop("asks for 2+ years of experience")
         return ("ai", "ok")
-    if hits(CORE_RE, head) or len(hits(CORE_RE, desc)) >= 2:
+    if hits(CORE_RE, head):
         if any(w in title for w in (" sales ", "business development", "marketing", "recruiter",
                                     "account executive", "account manager", "developer", "software",
                                     "programmer", "devops", "full stack", "full-stack", "backend",
