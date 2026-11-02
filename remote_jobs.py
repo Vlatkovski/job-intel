@@ -306,7 +306,11 @@ def classify(j):
         if any(w in title for w in (" sales ", "business development", "marketing", "recruiter",
                                     "account executive", "account manager", "developer", "software",
                                     "programmer", "devops", "full stack", "full-stack", "backend",
-                                    "back-end", "frontend", "front-end", "data scientist")):
+                                    "back-end", "frontend", "front-end", "data scientist",
+                                    " ux", "ux/", " ui ", "ui/", "product design", "graphic",
+                                    "brand", "visual design", "web design", "creative",
+                                    "illustrat", "animator", "head of", "director",
+                                    "vice president", "chief ")):
             return drop("senior / dev / sales title")
         return ("core", "ok" if loc == "ok" else "maybe")
     if hits(SIDE_RE, head) and loc in ("ok", "eu"):
