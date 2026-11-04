@@ -261,7 +261,7 @@ LOCAL_PAGES = [
 LOCAL_EXCLUDE = [
     "programer", "programmer", "developer", "software", "devops", "sql", "baza-na", "data-analy",
     "analiticar", "analitichar", "doktor", "medicinsk", "sestra", "lekar", "farmac", "stomatolog",
-    "rakovoditel", "direktor", "menadzer", "manager", "telefonska", "prodazh", "prodazb",
+    "prodazen", "prodavac", "prodazno", "recruiter", "marketing", "rakovoditel", "direktor", "menadzer", "manager", "telefonska", "prodazh", "prodazb",
     "kelner", "sanker", "bravar", "vulkanizer", "magacioner", "vozac", "gotvach", "pica-majstor",
     "chistac", "ciscenje", "nemski", "german", "senior",
 ]
@@ -273,6 +273,7 @@ LOCAL_FIT = [
 
 
 def fetch_local():
+    from html import unescape as html_unescape
     from urllib.parse import urljoin
     out, fails = [], 0
     for page in LOCAL_PAGES:
@@ -280,13 +281,14 @@ def fetch_local():
             r = requests.get(page, headers=HEADERS, timeout=TIMEOUT)
             r.raise_for_status()
             html = r.text
-        except Exception:
+        except Exception as e:
             fails += 1
+            print("local fetch failed:", page, type(e).__name__, str(e)[:100])
             continue
         host = "kariera.mk" if "kariera" in page else "vrabotuvanje.com.mk"
         titles = {}
         for m in re.finditer(r'<a\b[^>]*href="([^"]*?/job/[^"#]+)"[^>]*>(.*?)</a>', html, re.S | re.I):
-            url = urljoin(page, m.group(1))
+            url = urljoin(page, html_unescape(m.group(1))).split("?")[0]
             text = strip_html(m.group(2))
             good = len(text) > 3 and not any(w in text.lower() for w in ("погледни", "аплицирај", "view", "apply", "повеќе"))
             if url not in titles or (good and not titles[url]):
