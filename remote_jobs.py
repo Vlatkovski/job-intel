@@ -325,7 +325,7 @@ def save_local_seen(seen):
 
 
 FETCHERS = [fetch_remotive, fetch_remotive_support, fetch_remoteok, fetch_jobicy,
-            fetch_wwr, fetch_targeted, fetch_local]
+            fetch_wwr, fetch_targeted]
 
 
 # ---- filtering --------------------------------------------------------------
