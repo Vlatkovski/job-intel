@@ -54,6 +54,8 @@ SIDE_EXCLUDE = [
     "senior", "director", "head of", "vice president", " vp ", "lead ", "principal",
     "manager", "developer", "software", "devops", "programmer", "engineer",
     "sales", "business development", "account executive", "recruiter", "marketing",
+    "sql", "database", "data analyst", "data engineer", "data scientist", "analytics",
+    "business intelligence", "bi analyst", "etl", "python", "java", "javascript",
 ]
 SCAM_TERMS = [
     "registration fee", "pay a fee", "training fee", "telegram", "whatsapp",
@@ -248,8 +250,80 @@ def fetch_targeted():
     return out
 
 
+# ---- Macedonia / Skopje local boards ------------------------------------------
+LOCAL_SEEN_FILE = "local_seen.json"
+LOCAL_PAGES = [
+    "https://kariera.mk/rabota-vo-skopje",
+    "https://kariera.mk/rabota-vo-skopje?page=2",
+    "https://kariera.mk/rabota-vo-skopje?page=3",
+    "https://www.vrabotuvanje.com.mk/en/job-search?locations=%D0%A1%D0%BA%D0%BE%D0%BF%D1%98%D0%B5",
+]
+LOCAL_EXCLUDE = [
+    "programer", "programmer", "developer", "software", "devops", "sql", "baza-na", "data-analy",
+    "analiticar", "analitichar", "doktor", "medicinsk", "sestra", "lekar", "farmac", "stomatolog",
+    "rakovoditel", "direktor", "menadzer", "manager", "telefonska", "prodazh", "prodazb",
+    "kelner", "sanker", "bravar", "vulkanizer", "magacioner", "vozac", "gotvach", "pica-majstor",
+    "chistac", "ciscenje", "nemski", "german", "senior",
+]
+LOCAL_FIT = [
+    "administrat", "asistent", "referent", "koordinator", "recepcion", "poddrska",
+    "korisnick", "inzhener", "inzener", "engineer", "kontrolor", "sekretar", "support",
+    "assistant", "office", "customer", "podatoci", "data-entry", "gis",
+]
+
+
+def fetch_local():
+    from urllib.parse import urljoin
+    out, fails = [], 0
+    for page in LOCAL_PAGES:
+        try:
+            r = requests.get(page, headers=HEADERS, timeout=TIMEOUT)
+            r.raise_for_status()
+            html = r.text
+        except Exception:
+            fails += 1
+            continue
+        host = "kariera.mk" if "kariera" in page else "vrabotuvanje.com.mk"
+        titles = {}
+        for m in re.finditer(r'<a\b[^>]*href="([^"]*?/job/[^"#]+)"[^>]*>(.*?)</a>', html, re.S | re.I):
+            url = urljoin(page, m.group(1))
+            text = strip_html(m.group(2))
+            good = len(text) > 3 and not any(w in text.lower() for w in ("погледни", "аплицирај", "view", "apply", "повеќе"))
+            if url not in titles or (good and not titles[url]):
+                titles[url] = text if good else ""
+        for url, text in titles.items():
+            slug = url.rstrip("/").rsplit("/", 1)[-1]
+            out.append(job(text or slug.replace("-", " "), "", "Skopje", url, None, "", [slug], "Local: " + host))
+    print(f"local pages: {len(LOCAL_PAGES)}, failed {fails}, links {len(out)}")
+    return out
+
+
+def classify_local(j):
+    slug = " ".join(j["tags"]).lower()
+    t = (j["title"] + " " + slug).lower()
+    if any(x in t for x in LOCAL_EXCLUDE):
+        STATS["local: not for him"] = STATS.get("local: not for him", 0) + 1
+        return None
+    if any(x in t for x in LOCAL_FIT):
+        return ("local", "fit")
+    return ("local", "other")
+
+
+def load_local_seen():
+    import json
+    try:
+        return set(json.load(open(LOCAL_SEEN_FILE, encoding="utf-8")))
+    except Exception:
+        return set()
+
+
+def save_local_seen(seen):
+    import json
+    json.dump(sorted(seen)[-3000:], open(LOCAL_SEEN_FILE, "w", encoding="utf-8"))
+
+
 FETCHERS = [fetch_remotive, fetch_remotive_support, fetch_remoteok, fetch_jobicy,
-            fetch_wwr, fetch_targeted]
+            fetch_wwr, fetch_targeted, fetch_local]
 
 
 # ---- filtering --------------------------------------------------------------
@@ -306,7 +380,9 @@ def classify(j):
                                     " ux", "ux/", " ui ", "ui/", "product design", "graphic",
                                     "brand", "visual design", "web design", "creative",
                                     "illustrat", "animator", "head of", "director",
-                                    "vice president", "chief ")):
+                                    "vice president", "chief ", "sql", "database",
+                                    "data analyst", "data engineer", "analytics",
+                                    "business intelligence")):
             return drop("senior / dev / sales title")
         return ("core", "ok" if loc == "ok" else "maybe")
     if hits(SIDE_RE, head) and loc in ("ok", "eu"):
@@ -336,10 +412,21 @@ def main():
             status.append(f"{f.__name__[6:]}: ERROR {type(e).__name__}")
     print("sources ->", ", ".join(status))
 
+    local_seen = load_local_seen()
+    new_local = set()
     seen, buckets = set(), {("core", "ok"): [], ("core", "maybe"): [], ("side", "ok"): [],
-                            ("ai", "ok"): []}
+                            ("ai", "ok"): [], ("local", "fit"): [], ("local", "other"): []}
     for j in all_jobs:
         if not j["url"] or j["url"] in seen:
+            continue
+        if j["source"].startswith("Local"):
+            if j["url"] in local_seen:
+                continue
+            c = classify_local(j)
+            seen.add(j["url"])
+            if c:
+                buckets[c].append(j)
+                new_local.add(j["url"])
             continue
         if j["published"] and j["published"] < cutoff:
             continue
@@ -363,17 +450,22 @@ def main():
         ("core", "maybe"): "Engineering/design, location unclear (check manually)",
         ("side", "ok"): "Easy remote work (chat, email, admin, data entry), open to him",
         ("ai", "ok"): "AI training / annotation gigs, open to him (check pay and platform first)",
+        ("local", "fit"): "Skopje / North Macedonia, office, admin, support, engineering (check on-site vs remote)",
+        ("local", "other"): "Skopje / North Macedonia, other (shop, hospitality, production...)",
     }
-    for key in [("core", "ok"), ("core", "maybe"), ("side", "ok"), ("ai", "ok")]:
-        items = buckets[key][:25]
+    for key in [("core", "ok"), ("core", "maybe"), ("side", "ok"), ("ai", "ok"),
+                ("local", "fit"), ("local", "other")]:
+        items = buckets[key][:12 if key == ("local", "other") else 25]
         if items:
             parts.append(f"## {titles[key]} ({len(buckets[key])})\n\n" + "\n".join(line(j) for j in items))
     parts.append("Sources: [Remotive](https://remotive.com), [Remote OK](https://remoteok.com), "
                  "[Jobicy](https://jobicy.com), "
-                 "[We Work Remotely](https://weworkremotely.com)\n\n"
+                 "[We Work Remotely](https://weworkremotely.com), [Kariera.mk](https://kariera.mk), "
+                 "[Vrabotuvanje](https://www.vrabotuvanje.com.mk)\n\n"
                  "Scan status: " + ", ".join(status) +
                  "\n\nFiltered out: " + (", ".join(f"{k}: {v}" for k, v in STATS.items()) or "nothing"))
 
+    save_local_seen(local_seen | new_local)
     with open("remote_title.txt", "w", encoding="utf-8") as f:
         f.write(f"Remote jobs {now.strftime('%Y-%m-%d')}: {total} new")
     with open("remote_body.txt", "w", encoding="utf-8") as f:
