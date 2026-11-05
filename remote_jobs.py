@@ -90,6 +90,22 @@ US_ONLY_PATTERNS = [
     r"(usa|us|united states)[- ]only",
 ]
 
+# US-only signals in title or text, even when the board says "Anywhere"
+US_TITLE_RE = re.compile(
+    r"(^|[^a-z])(us remote|us-remote|us based|us-based|u\.s\.|usa|united states|us only|us-only|"
+    r"\(us\)|\(usa\)|us citizens?)([^a-z]|$)|^\s*us\s", re.I)
+US_TEXT_SIGNS = [
+    "high school diploma or ged", "or ged", " ged ", "veterans", "401(k)", "401k", "w-2", "w2 ",
+    "us-based", "u.s.-based", "based in the us", "based in the united states",
+    "must reside in the", "us time zones", "us timezone", "eastern time", "pacific time",
+    "central time", "est hours", "cst hours", "pst hours",
+]
+# work that means speaking to people, even if the ad does not say "call"
+VOICE_SIGNS = [
+    "verbal communication", "ambient noise", "quiet workspace", "door that closes",
+    "headset", "speak with", "speaking with", "talk to customers", "talking to customers",
+]
+
 
 def term_re(t):
     return re.compile(r"(?<![a-z0-9])" + re.escape(t) + r"(?![a-z0-9])")
@@ -360,6 +376,8 @@ def classify(j):
     loc = loc_class(j["location"])
     if loc == "no":
         return drop("location not open to him")
+    if US_TITLE_RE.search(j["title"]) or any(x in desc for x in US_TEXT_SIGNS):
+        return drop("US-only text")
     if any(b in head for b in BAD_TERMS):
         if loc not in ("ok", "eu"):
             return None
@@ -392,7 +410,7 @@ def classify(j):
             return drop("needs a language he lacks")
         if any(w in title for w in SIDE_EXCLUDE):
             return drop("senior / dev / sales title")
-        if any(c in title or c in desc for c in CALL_TERMS):
+        if any(c in title or c in desc for c in CALL_TERMS + VOICE_SIGNS):
             return drop("needs calls / video / screen sharing")
         years = [int(n) for n in re.findall(r"(\d{1,2})\s*\+?\s*(?:years|yrs)", desc)]
         if years and max(years) >= 2:
@@ -462,8 +480,7 @@ def main():
             parts.append(f"## {titles[key]} ({len(buckets[key])})\n\n" + "\n".join(line(j) for j in items))
     parts.append("Sources: [Remotive](https://remotive.com), [Remote OK](https://remoteok.com), "
                  "[Jobicy](https://jobicy.com), "
-                 "[We Work Remotely](https://weworkremotely.com), [Kariera.mk](https://kariera.mk), "
-                 "[Vrabotuvanje](https://www.vrabotuvanje.com.mk)\n\n"
+                 "[We Work Remotely](https://weworkremotely.com)\n\n"
                  "Scan status: " + ", ".join(status) +
                  "\n\nFiltered out: " + (", ".join(f"{k}: {v}" for k, v in STATS.items()) or "nothing"))
 
