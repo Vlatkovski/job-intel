@@ -340,8 +340,138 @@ def save_local_seen(seen):
     json.dump(sorted(seen)[-3000:], open(LOCAL_SEEN_FILE, "w", encoding="utf-8"))
 
 
+# ---- extra sources (best effort, every one logs its own result) ----------------
+def fetch_workingnomads():
+    r = requests.get("https://www.workingnomads.com/api/exposed_jobs/", headers=HEADERS, timeout=TIMEOUT)
+    r.raise_for_status()
+    out = []
+    for j in r.json():
+        out.append(job(j.get("title"), j.get("company_name"), j.get("location") or "Worldwide",
+                       j.get("url"), j.get("pub_date"), j.get("description"),
+                       [j.get("category_name")] + (j.get("tags") or "").split(","),
+                       "Working Nomads"))
+    return out
+
+
+WORKABLE_QUERIES = ["data entry", "virtual assistant", "administrative assistant", "chat support",
+                    "email support", "customer support", "make ready", "pole loading",
+                    "outside plant", "OSP design", "GIS"]
+
+
+def fetch_workable():
+    import time
+    out, fails = [], 0
+    for q in WORKABLE_QUERIES:
+        try:
+            r = requests.get("https://jobs.workable.com/api/v1/jobs",
+                             params={"query": q, "workplace": "remote"},
+                             headers=HEADERS, timeout=TIMEOUT)
+            r.raise_for_status()
+            for j in r.json().get("jobs", []):
+                loc = j.get("location") or {}
+                if isinstance(loc, dict):
+                    loc = ", ".join(x for x in (loc.get("city"), loc.get("subregion"),
+                                                loc.get("countryName") or loc.get("country")) if x)
+                co = j.get("company") or {}
+                out.append(job(j.get("title"), co.get("title") if isinstance(co, dict) else co,
+                               loc or "", j.get("url") or j.get("shortlink"),
+                               j.get("created") or j.get("updated"), j.get("description"),
+                               [], "Workable"))
+        except Exception as e:
+            fails += 1
+            print("workable failed:", q, type(e).__name__, str(e)[:80])
+        time.sleep(1)
+    print(f"workable: {len(WORKABLE_QUERIES)} queries, {fails} failed, {len(out)} results")
+    return out
+
+
+def fetch_jobrack():
+    from urllib.parse import urljoin
+    from html import unescape
+    base = "https://jobrack.eu"
+    links = []
+    for page in (base + "/jobs", base + "/", base + "/sitemap.xml"):
+        try:
+            r = requests.get(page, headers=HEADERS, timeout=TIMEOUT)
+            r.raise_for_status()
+        except Exception as e:
+            print("jobrack page failed:", page, type(e).__name__, str(e)[:80])
+            continue
+        for m in re.findall(r'(?:href="|<loc>)([^"<>]*?/jobs/[a-z0-9][a-z0-9-]+)', r.text):
+            u = urljoin(base, unescape(m)).split("?")[0]
+            if u not in links:
+                links.append(u)
+    print("jobrack job links found:", len(links))
+    out = []
+    for u in links[:60]:
+        try:
+            r = requests.get(u, headers=HEADERS, timeout=TIMEOUT)
+            r.raise_for_status()
+        except Exception:
+            continue
+        h = r.text
+        t = re.search(r"<h1[^>]*>(.*?)</h1>", h, re.S) or re.search(r"<title>(.*?)</title>", h, re.S)
+        title = strip_html(unescape(t.group(1))) if t else u.rsplit("/", 1)[-1].replace("-", " ")
+        text = strip_html(unescape(h))
+        m = re.search(r"(?:Location|Locations|Countries|Country)\s*[:\-]?\s*([A-Z][^|]{3,160}?)(?:\s{2,}|Apply|Posted|Salary|$)", text)
+        loc = m.group(1) if m else "Europe"
+        out.append(job(title, "", loc, u, None, text[:6000], [], "Jobrack"))
+    return out
+
+
+# companies that may use a public ATS board; tried against Greenhouse, Lever, Ashby, Workable
+ATS_COMPANIES = ["afterquery"]
+
+
+def fetch_ats():
+    out = []
+    for c in ATS_COMPANIES:
+        found = False
+        tries = [
+            ("greenhouse", f"https://boards-api.greenhouse.io/v1/boards/{c}/jobs?content=true"),
+            ("lever", f"https://api.lever.co/v0/postings/{c}?mode=json"),
+            ("ashby", f"https://api.ashbyhq.com/posting-api/job-board/{c}"),
+            ("workable", f"https://apply.workable.com/api/v1/widget/accounts/{c}"),
+        ]
+        for kind, url in tries:
+            try:
+                r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+                if r.status_code != 200:
+                    continue
+                d = r.json()
+                if kind == "greenhouse":
+                    for j in d.get("jobs", []):
+                        out.append(job(j.get("title"), c, (j.get("location") or {}).get("name"),
+                                       j.get("absolute_url"), j.get("updated_at"), j.get("content"),
+                                       [], "ATS " + c))
+                elif kind == "lever":
+                    for j in d:
+                        out.append(job(j.get("text"), c, (j.get("categories") or {}).get("location"),
+                                       j.get("hostedUrl"), j.get("createdAt"),
+                                       j.get("descriptionPlain"), [], "ATS " + c))
+                elif kind == "ashby":
+                    for j in d.get("jobs", []):
+                        out.append(job(j.get("title"), c, j.get("location"), j.get("jobUrl"),
+                                       j.get("publishedAt"), j.get("descriptionPlain"),
+                                       [], "ATS " + c))
+                else:
+                    for j in d.get("jobs", []):
+                        out.append(job(j.get("title"), c, j.get("country") or j.get("location"),
+                                       j.get("url") or j.get("shortlink"), j.get("published_on"),
+                                       j.get("description"), [], "ATS " + c))
+                print(f"ats {c}: {kind} board found, {len(out)} jobs so far")
+                found = True
+                break
+            except Exception:
+                continue
+        if not found:
+            print(f"ats {c}: no public board found on greenhouse/lever/ashby/workable")
+    return out
+
+
 FETCHERS = [fetch_remotive, fetch_remotive_support, fetch_remoteok, fetch_jobicy,
-            fetch_wwr, fetch_targeted]
+            fetch_wwr, fetch_targeted, fetch_workingnomads, fetch_workable,
+            fetch_jobrack, fetch_ats]
 
 
 # ---- filtering --------------------------------------------------------------
@@ -480,7 +610,8 @@ def main():
             parts.append(f"## {titles[key]} ({len(buckets[key])})\n\n" + "\n".join(line(j) for j in items))
     parts.append("Sources: [Remotive](https://remotive.com), [Remote OK](https://remoteok.com), "
                  "[Jobicy](https://jobicy.com), "
-                 "[We Work Remotely](https://weworkremotely.com)\n\n"
+                 "[We Work Remotely](https://weworkremotely.com), [Working Nomads](https://www.workingnomads.com), "
+                 "[Workable](https://jobs.workable.com), [Jobrack](https://jobrack.eu)\n\n"
                  "Scan status: " + ", ".join(status) +
                  "\n\nFiltered out: " + (", ".join(f"{k}: {v}" for k, v in STATS.items()) or "nothing"))
 
