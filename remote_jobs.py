@@ -415,6 +415,8 @@ def fetch_jobrack():
         text = strip_html(unescape(h))
         m = re.search(r"(?:Location|Locations|Countries|Country)\s*[:\-]?\s*([A-Z][^|]{3,160}?)(?:\s{2,}|Apply|Posted|Salary|$)", text)
         loc = m.group(1) if m else "Europe"
+        if "closed" in title.lower() or "no longer accepting" in text.lower():
+            continue
         out.append(job(title, "", loc, u, None, text[:6000], [], "Jobrack"))
     return out
 
