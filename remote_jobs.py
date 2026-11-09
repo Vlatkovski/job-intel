@@ -71,6 +71,7 @@ CALL_TERMS = [
     "video support", "screen shar", "screenshar", "zoom call", "voice channel",
 ]
 STATS = {}
+FETCHED, KEPT = {}, {}
 # titles/tags containing these are dropped (AI-training gigs etc.)
 BAD_TERMS = [
     "annotation", "annotator", "ai trainer", "ai training", "data labeling",
@@ -582,10 +583,16 @@ def main():
             continue
         if j["published"] and j["published"] < cutoff:
             continue
+        if not j["published"] and j["url"] in local_seen:
+            continue  # undated ad already reported on an earlier day
+        FETCHED[j["source"]] = FETCHED.get(j["source"], 0) + 1
         c = classify(j)
         if c in buckets:
             seen.add(j["url"])
             buckets[c].append(j)
+            KEPT[j["source"]] = KEPT.get(j["source"], 0) + 1
+            if not j["published"]:
+                new_local.add(j["url"])
 
     total = sum(len(v) for v in buckets.values())
     print("matches:", total)
@@ -615,6 +622,8 @@ def main():
                  "[We Work Remotely](https://weworkremotely.com), [Working Nomads](https://www.workingnomads.com), "
                  "[Workable](https://jobs.workable.com), [Jobrack](https://jobrack.eu)\n\n"
                  "Scan status: " + ", ".join(status) +
+                 "\n\nPer source (new ads checked -> kept): " +
+                 ", ".join(f"{k}: {FETCHED[k]}->{KEPT.get(k, 0)}" for k in sorted(FETCHED)) +
                  "\n\nFiltered out: " + (", ".join(f"{k}: {v}" for k, v in STATS.items()) or "nothing"))
 
     save_local_seen(local_seen | new_local)
